@@ -1,0 +1,172 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+<h2>Search for Services</h2>
+<form method="get" action="{% url 'search_services' %}">
+    <label for="service_name">Service Name:</label>
+    <input type="text" id="service_name" name="service_name" placeholder="e.g., plumber, electrician" required>
+
+    <label for="distance">Distance (in km):</label>
+    <input type="number" id="distance" name="distance" placeholder="e.g., 20" required>
+
+    <button type="submit">Search</button>
+</form>
+
+{% if results %}
+<h3>Results:</h3>
+<ul>
+    {% for service in locations %}
+    <li>
+        <p>service</p>
+        <!-- <strong>{{ service_user.user.full_name }}</strong>
+        <p>Distance: {{ service_user.distance }} km</p> -->
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+<!-- Map Container -->
+<h3>User Locations on the Map</h3>
+<div id="map" style="height: 500px; width: 100%;"></div>
+
+<script s src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCVDQMraBCJisZLzPZw-8NWy-hLDFUsWhQ&callback=initMap"
+    async defer></script>
+<script type="text/javascript">
+    function initMap() {
+        var map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: 0, lng: 0 }, // Default center if no locations are passed
+            zoom: 3
+        });
+
+        // Check if 'locations' is a valid JSON string and is not empty
+        var locations = '{{ locations|safe }}';
+        var customer_location = '{{ customer_location|safe }}';
+        console.log('customer location', customer_location)
+
+        if (customer_location && customer_location !== '{}') {
+            customer_location = JSON.parse(customer_location); // Parse locations JSON if valid
+
+            if (isNaN(customer_location.lat) || isNaN(customer_location.lng)) {
+                console.error('Invalid location at index ' + index, customer_location)
+            }
+
+            new google.maps.Marker({
+                position: customer_location,
+                map: map,
+                label: customer_location.name, // Marker label with name
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    fillColor: 'white',
+                    fillOpacity: 1,
+                    strokeColor: 'red',
+                    strokeWeight: 5,
+                    scale: 8
+                }
+            });
+
+            var cust_bounds = new google.maps.LatLngBounds();
+            cust_bounds.extend(new google.maps.LatLng(customer_location.lat, customer_location.lng));
+            map.fitBounds(cust_bounds);
+        }
+
+        // Prevent empty JSON from being parsed
+        if (locations && locations !== '[]') {
+            locations = JSON.parse(locations); // Parse locations JSON if valid
+
+            // Validate and log the locations
+            locations.forEach(function (location, index) {
+                if (isNaN(location.lat) || isNaN(location.lng)) {
+                    console.error('Invalid location at index ' + index, location);
+                }
+            });
+
+            // Adding markers to the map
+            locations.forEach(function (location) {
+                new google.maps.Marker({
+                    position: location,
+                    map: map,
+                    label: location.name, // Marker label with name
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: 'white',
+                        fillOpacity: 1,
+                        strokeColor: 'green',
+                        strokeWeight: 5,
+                        scale: 8
+                    }
+                });
+            });
+
+            // Adjust map bounds to fit all markers
+            var bounds = new google.maps.LatLngBounds();
+            locations.forEach(function (location) {
+                bounds.extend(new google.maps.LatLng(location.lat, location.lng));
+            });
+            map.fitBounds(bounds);
+        } else {
+            console.warn('No locations data to display.');
+        }
+    }
+</script>
+
+
+
+<script>
+    // Function to send the location to the server
+    function updateLocation(latitude, longitude) {
+        fetch('/user-service/update-location/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                latitude: latitude,
+                longitude: longitude
+            })
+        })
+            .then(response => response.json())
+            .then(data => console.log('Location updated:', data))
+            .catch(error => console.error('Error:', error));
+    }
+
+    // Function to get and send location to the server
+    function getAndSendLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function (position) {
+                var latitude = position.coords.latitude;
+                var longitude = position.coords.longitude;
+
+                // Send the location to the server
+                updateLocation(latitude, longitude);
+
+                // Start sending updates every 2 minutes (120,000 ms)
+                setInterval(function () {
+                    navigator.geolocation.getCurrentPosition(function (position) {
+                        var latitude = position.coords.latitude;
+                        var longitude = position.coords.longitude;
+                        console.log("Latitude: " + latitude + ", Longitude: " + longitude)
+
+                        // Send updated location to the server
+                        updateLocation(latitude, longitude);
+                    }, function (error) {
+                        console.error('Error getting location: ', error);
+                    });
+                }, 120000); // 2 minutes
+            }, function (error) {
+                console.error('Error getting location: ', error);
+                alert('Location access denied. You can enable it in your browser settings.');
+            });
+        } else {
+            alert('Geolocation is not supported by this browser.');
+        }
+    }
+
+    // Check if the user is logged in and then get the location
+    document.addEventListener('DOMContentLoaded', function () {
+        // Assuming user is already logged in (you can check this if necessary)
+        getAndSendLocation();
+    });
+</script>
+
+{% endblock %}

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Search</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCVDQMraBCJisZLzPZw-8NWy-hLDFUsWhQ&callback=initMap"
+        async defer></script>
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+
+        #service-list {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Search Services</h1>
+
+    <!-- Search Form -->
+    <form id="search-form" onsubmit="handleFormSubmit(event)">
+        {% csrf_token %}
+        <label for="service_name">Service Name:</label>
+        <input type="text" id="service_name" name="service_name" required>
+        <label for="distance">Distance (km):</label>
+        <input type="number" id="distance" name="distance" required>
+        <button type="submit">Search</button>
+    </form>
+
+    <div id="map"></div>
+    <div id="service-list">
+        <h3>Available Services</h3>
+        <ul id="services"></ul>
+    </div>
+
+    <script>
+        let map;
+        let customerMarker;
+        const serviceMarkers = [];
+        const bounds = new google.maps.LatLngBounds();
+
+        // Initialize the map and set the user's location
+        function initMap() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                        };
+
+                        initializeMap(userLocation);
+                        updateLocationInDB(userLocation.lat, userLocation.lng);
+                    },
+                    () => {
+                        initializeMap({ lat: 19.076, lng: 72.8777 }); // Default to Mumbai
+                    }
+                );
+            } else {
+                initializeMap({ lat: 19.076, lng: 72.8777 }); // Default to Mumbai
+            }
+        }
+
+        // Initialize the map centered on a given location
+        function initializeMap(location) {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: location,
+                zoom: 12,
+            });
+
+            customerMarker = new google.maps.Marker({
+                position: location,
+                map: map,
+                title: "Your Location",
+                icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
+            });
+
+            bounds.extend(location);
+        }
+
+        // Update map and list with new service data
+        function updateMapAndList(data) {
+            // Clear existing service markers
+            serviceMarkers.forEach((marker) => marker.setMap(null));
+            serviceMarkers.length = 0;
+
+            // Add service markers
+            data.services.forEach((service) => {
+                const serviceLocation = { lat: service.latitude, lng: service.longitude };
+                const marker = new google.maps.Marker({
+                    position: serviceLocation,
+                    map: map,
+                    title: service.user,
+                    icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
+                });
+                serviceMarkers.push(marker);
+                bounds.extend(serviceLocation);
+            });
+
+            // Fit map to bounds
+            map.fitBounds(bounds);
+
+            // Update service list
+            const serviceList = document.getElementById("services");
+            serviceList.innerHTML = "";
+            data.services.forEach((service) => {
+                const listItem = document.createElement("li");
+                listItem.textContent = `${service.user} (${service.service_name})`;
+                serviceList.appendChild(listItem);
+            });
+        }
+
+        // Handle search form submission
+        function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const serviceName = document.getElementById("service_name").value;
+            const distance = document.getElementById("distance").value;
+            fetchData(serviceName, distance);
+        }
+
+        // Fetch service data from the server
+        function fetchData(serviceName, distance) {
+            const csrftoken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+
+            fetch("/user-service/search/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrftoken,
+                },
+                body: JSON.stringify({
+                    service_name: serviceName,
+                    distance: parseInt(distance),
+                }),
+            })
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then((data) => updateMapAndList(data))
+                .catch((error) => console.error("Error fetching data:", error));
+        }
+
+        // Update user location in the database
+        function updateLocationInDB(latitude, longitude) {
+            fetch("/user-service/update-location/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": '{{ csrf_token }}',
+                },
+                body: JSON.stringify({ latitude, longitude }),
+            })
+                .then((response) => response.json())
+                .then((data) => console.log("Location updated:", data))
+                .catch((error) => console.error("Error updating location:", error));
+        }
+
+        // Periodically update user location every 2 minutes
+        function startLocationUpdates() {
+            setInterval(() => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition((position) => {
+                        const { latitude, longitude } = position.coords;
+                        updateLocationInDB(latitude, longitude);
+                    });
+                }
+            }, 120000); // 2 minutes
+        }
+
+        // Initialize the map and start location updates
+        document.addEventListener("DOMContentLoaded", () => {
+            initMap();
+            startLocationUpdates();
+        });
+    </script>
+</body>
+
+</html>

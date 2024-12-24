@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Locations</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCVDQMraBCJisZLzPZw-8NWy-hLDFUsWhQ&callback=initMap"
+        async defer></script>
+    <script type="text/javascript">
+        function initMap() {
+            var map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 0, lng: 0 },
+                zoom: 3
+            });
+
+            // Parse the Django locations as a valid JSON array
+            var locations = JSON.parse('{{ locations|safe }}');
+
+            // Validate and log the locations to ensure they are valid
+            locations.forEach(function (location, index) {
+                if (isNaN(location.lat) || isNaN(location.lng)) {
+                    console.error('Invalid location at index ' + index, location);
+                }
+            });
+
+            // Adding markers to the map
+            locations.forEach(function (location) {
+                new google.maps.Marker({
+                    position: location,
+                    map: map,
+                    label: location.name,  // Adds a label with the name of the location
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,  // Marker icon shape
+                        fillColor: 'white',  // Set the marker color
+                        fillOpacity: 1,  // Opacity of the marker fill color
+                        strokeColor: "green",  // Border color of the marker
+                        strokeWeight: 5,  // Border width
+                        scale: 8  // Size of the marker
+                    }
+                });
+            });
+
+            // Adjust map bounds to fit all markers
+            var bounds = new google.maps.LatLngBounds();
+            locations.forEach(function (location) {
+                bounds.extend(new google.maps.LatLng(location.lat, location.lng));
+            });
+            map.fitBounds(bounds);
+        }
+    </script>
+
+</head>
+
+<body>
+    <h1>User Locations on the Map</h1>
+    <div id="map" style="height: 500px; width: 100%;"></div>
+</body>
+
+</html>
